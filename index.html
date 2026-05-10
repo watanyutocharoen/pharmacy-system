@@ -682,7 +682,7 @@ window.addEventListener('load', function() {
   });
 
   // โหลด lists จาก API
-  if (API_URL === "YOUR_APPS_SCRIPT_URL_HERE") {
+  if (API_URL === "https://script.google.com/macros/s/AKfycbyowZceROiW3d0XSvzwJCseUWp44kIdlNVy2MEYyYbwl5XOF3Nly5R7GoVe_IpP69eCDQ/exec") {
     setAlert('search-alert', '⚠️ ยังไม่ได้ตั้งค่า <strong>API_URL</strong> — เปิดไฟล์ index.html แล้วแทนที่ YOUR_APPS_SCRIPT_URL_HERE ด้วย URL จาก Apps Script', 'danger');
     document.getElementById('hdr-sub').textContent = 'ยังไม่ได้ตั้งค่า API';
     return;
@@ -693,18 +693,34 @@ window.addEventListener('load', function() {
 
 async function loadLists() {
   document.getElementById('hdr-sub').textContent = 'กำลังโหลด...';
+
+  // timeout 10 วินาที ป้องกันค้าง
+  var timer = setTimeout(function() {
+    document.getElementById('hdr-sub').textContent = '⚠️ โหลดช้า — ใช้งานได้ (ไม่มี list)';
+  }, 10000);
+
   try {
     var res = await apiGet({ action: 'getLists' });
+    clearTimeout(timer);
+
+    var df    = (res.dosageForms && res.dosageForms.length) ? res.dosageForms : [];
+    var units = (res.units       && res.units.length)       ? res.units       : [];
+    var users = (res.users       && res.users.length)       ? res.users       : [];
+
+    ssSetOptions('ss-add-dosage', df);
+    ssSetOptions('ss-add-unit',   units);
+    ssSetOptions('ss-recv-user',  users);
+    ssSetOptions('ss-trsf-user',  users);
+
     if (res.status === 'ok') {
-      appLists = res;
-      ssSetOptions('ss-add-dosage', res.dosageForms);
-      ssSetOptions('ss-add-unit',   res.units);
-      ssSetOptions('ss-recv-user',  res.users);
-      ssSetOptions('ss-trsf-user',  res.users);
       document.getElementById('hdr-sub').textContent = 'พร้อมใช้งาน';
+    } else {
+      // API ตอบกลับแต่ยังไม่มี getLists (Deploy เก่า) — ยังใช้งานค้นหาได้
+      document.getElementById('hdr-sub').textContent = '⚠️ กรุณา Re-deploy Apps Script';
     }
   } catch(e) {
-    document.getElementById('hdr-sub').textContent = 'โหลด list ไม่ได้';
+    clearTimeout(timer);
+    document.getElementById('hdr-sub').textContent = '⚠️ เชื่อมต่อไม่ได้ — ตรวจสอบ API URL';
   }
 }
 
@@ -1208,4 +1224,19 @@ function restoreZero(el) { if (el.value === '' || isNaN(el.value)) el.value = '0
 async function apiGet(params) {
   var qs  = Object.entries(params).map(function(kv) { return kv[0] + '=' + encodeURIComponent(kv[1]); }).join('&');
   var res = await fetch(API_URL + '?' + qs);
-  return res
+  return res.json();
+}
+
+async function apiPost(data) {
+  // ใช้ text/plain เพื่อหลีกเลี่ยง CORS preflight ของ Google Apps Script
+  var res = await fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(data),
+    redirect: 'follow'
+  });
+  return res.json();
+}
+</script>
+</body>
+</html>
