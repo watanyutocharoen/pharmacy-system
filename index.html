@@ -1037,7 +1037,7 @@ async function submitAddDrug() {
   var drugName  = document.getElementById('add-name').value.trim();
   var dosage    = ssGetValue('ss-add-dosage');
   var unit      = ssGetValue('ss-add-unit');
-  var location  = document.getElementById('add-loc').value.trim();
+  var drugLoc   = document.getElementById('add-loc').value.trim();
   var minStock  = parseInt(document.getElementById('add-min').value);
   var maxStock  = parseInt(document.getElementById('add-max').value);
   var initStock = parseInt(document.getElementById('add-stock').value);
@@ -1048,7 +1048,7 @@ async function submitAddDrug() {
   if (!drugName) miss.push('ชื่อยา');
   if (!dosage)   miss.push('ลักษณะยา');
   if (!unit)     miss.push('หน่วยนับ');
-  if (!location) miss.push('ตำแหน่งเก็บ');
+  if (!drugLoc)  miss.push('ตำแหน่งเก็บ');
   if (isNaN(minStock))  miss.push('Min Stock');
   if (isNaN(maxStock))  miss.push('Max Stock');
   if (isNaN(initStock)) miss.push('จำนวนเริ่มต้น');
@@ -1061,21 +1061,33 @@ async function submitAddDrug() {
     return;
   }
 
-  var res = await apiPost({
-    action: 'addDrug', barcode, drug_code: drugCode, drug_name: drugName,
-    dosage_form: dosage, unit, location,
-    min_stock: minStock, max_stock: maxStock, current_stock: initStock
-  });
+  setAlert('add-alert', '⏳ กำลังบันทึก...', 'info');
 
-  if (res.status === 'ok') {
-    setAlert('add-alert', '✅ เพิ่มยาสำเร็จ!', 'success');
-    // รีเซ็ต form
-    ['add-bc','add-code','add-name','add-loc'].forEach(function(id) { document.getElementById(id).value = ''; });
-    ['add-min','add-max','add-stock'].forEach(function(id) { document.getElementById(id).value = '0'; });
-    ssReset('ss-add-dosage');
-    ssReset('ss-add-unit');
-  } else {
-    setAlert('add-alert', '❌ ' + res.message, 'danger');
+  try {
+    var res = await apiPost({
+      action: 'addDrug',
+      barcode: barcode,
+      drug_code: drugCode,
+      drug_name: drugName,
+      dosage_form: dosage,
+      unit: unit,
+      location: drugLoc,
+      min_stock: minStock,
+      max_stock: maxStock,
+      current_stock: initStock
+    });
+
+    if (res.status === 'ok') {
+      setAlert('add-alert', '✅ เพิ่มยาสำเร็จ!', 'success');
+      ['add-bc','add-code','add-name','add-loc'].forEach(function(id) { document.getElementById(id).value = ''; });
+      ['add-min','add-max','add-stock'].forEach(function(id) { document.getElementById(id).value = '0'; });
+      ssReset('ss-add-dosage');
+      ssReset('ss-add-unit');
+    } else {
+      setAlert('add-alert', '❌ ' + res.message, 'danger');
+    }
+  } catch(err) {
+    setAlert('add-alert', '❌ เชื่อมต่อ API ไม่ได้: ' + err.message, 'danger');
   }
 }
 
@@ -1196,17 +1208,4 @@ function restoreZero(el) { if (el.value === '' || isNaN(el.value)) el.value = '0
 async function apiGet(params) {
   var qs  = Object.entries(params).map(function(kv) { return kv[0] + '=' + encodeURIComponent(kv[1]); }).join('&');
   var res = await fetch(API_URL + '?' + qs);
-  return res.json();
-}
-
-async function apiPost(data) {
-  var res = await fetch(API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data)
-  });
-  return res.json();
-}
-</script>
-</body>
-</html>
+  return res
