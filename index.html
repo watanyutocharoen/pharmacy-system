@@ -121,6 +121,25 @@ input:focus,textarea:focus{outline:none;border-color:var(--primary)}
 .alert-success{background:#e6f4ea;color:#1e7e34}
 .alert-info{background:#e8f0fe;color:#1557b0}
 
+/* ============================================================ TOAST ============================================================ */
+#toast-wrap{position:fixed;top:68px;left:50%;transform:translateX(-50%);z-index:999;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;width:88%;max-width:420px}
+.toast{padding:13px 20px;border-radius:12px;font-size:14px;font-weight:600;box-shadow:0 4px 20px rgba(0,0,0,.25);text-align:center;pointer-events:auto;animation:tIn .22s ease;width:100%}
+.toast-success{background:#34a853;color:#fff}
+.toast-danger{background:#ea4335;color:#fff}
+.toast-info{background:#1a73e8;color:#fff}
+.toast-warn{background:#fbbc04;color:#333}
+.toast-dark{background:#323232;color:#fff}
+@keyframes tIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes tOut{to{opacity:0;transform:translateY(-10px)}}
+
+/* ============================================================ ADD SCANNER OVERLAY ============================================================ */
+#add-scan-overlay{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:400;display:none;flex-direction:column;padding:20px;align-items:center}
+#add-scan-overlay.show{display:flex}
+.add-scan-title{color:#fff;font-size:16px;font-weight:700;margin-bottom:14px}
+#add-scan-video{width:100%;max-width:420px;border-radius:12px;overflow:hidden;background:#000;flex:1;max-height:380px}
+#add-scan-video video{width:100%!important}
+.add-scan-close{margin-top:16px;width:100%;max-width:420px}
+
 /* ============================================================ TRANSACTIONS ============================================================ */
 .txn-item{display:flex;align-items:flex-start;gap:10px;padding:11px 0;border-bottom:1px solid var(--border)}
 .txn-item:last-child{border-bottom:none}
@@ -193,6 +212,29 @@ input:focus,textarea:focus{outline:none;border-color:var(--primary)}
 <!-- ===================================================
      PAGE 1 : ค้นหา / สแกน
      =================================================== -->
+<!-- Toast container -->
+<div id="toast-wrap"></div>
+
+<!-- Add Scanner Overlay -->
+<div id="add-scan-overlay">
+  <div class="add-scan-title">📷 สแกนบาร์โค้ดยา</div>
+  <div id="add-scan-video"></div>
+  <button class="btn btn-gray add-scan-close" onclick="stopAddScanner()">✕ ปิดกล้อง</button>
+</div>
+
+<!-- Modal: ยามีในระบบแล้ว -->
+<div class="modal-overlay" id="modal-drug-exists">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <h2>⚠️ มียาในระบบแล้ว</h2>
+    <p id="drug-exists-msg" style="font-size:14px;margin-bottom:16px;line-height:1.6;color:var(--gray)"></p>
+    <div class="btn-row">
+      <button class="btn btn-gray" onclick="closeModal('drug-exists')">ยกเลิก</button>
+      <button class="btn btn-primary" onclick="confirmEditDrug()">✏️ แก้ไขข้อมูล</button>
+    </div>
+  </div>
+</div>
+
 <div class="page active" id="page-scan">
 
   <!-- ปุ่มเริ่มใหม่ -->
@@ -336,7 +378,7 @@ input:focus,textarea:focus{outline:none;border-color:var(--primary)}
       <label>บาร์โค้ด <span class="req">*</span></label>
       <div class="input-bar">
         <input type="text" id="add-bc" placeholder="สแกนหรือพิมพ์" inputmode="numeric">
-        <button class="btn btn-primary btn-sm" onclick="startScannerTo('add-bc')" style="width:auto;padding:10px 13px" title="เปิดกล้อง">
+        <button class="btn btn-primary btn-sm" onclick="startAddScanner()" style="width:auto;padding:10px 13px" title="เปิดกล้อง">
           <svg viewBox="0 0 24 24" fill="white" width="18" height="18">
             <path d="M9.5 6.5v3h-3v-3h3M11 5H5v6h6V5zm-1.5 9.5v3h-3v-3h3M11 13H5v6h6v-6zm6.5-6.5v3h-3v-3h3M19 5h-6v6h6V5zm-6 8h1.5v1.5H13V13zm1.5 1.5H16V16h-1.5v-1.5zM16 13h1.5v1.5H16V13zm-3 3h1.5v1.5H13V16zm1.5 1.5H16V19h-1.5v-1.5zM16 16h1.5v1.5H16V16zm1.5-1.5H19V16h-1.5v-1.5zm0 3H19V19h-1.5v-1.5zM22 7h-2V4h-3V2h5v5zm0 15v-5h-2v3h-3v2h5zM2 22h5v-2H4v-3H2v5zM2 2v5h2V4h3V2H2z"/>
           </svg>
@@ -564,12 +606,32 @@ var API_URL = "https://script.google.com/macros/s/AKfycby-3u43cXqj-_EJRLshq4P3LM
 // ============================================================
 // GLOBAL STATE
 // ============================================================
-var currentDrug   = null;
-var allDrugs      = [];
-var histVisible   = false;
-var scannerActive = false;
-var html5QrCode   = null;
-var scanTargetId  = "search-bc";
+var currentDrug    = null;
+var allDrugs       = [];
+var histVisible    = false;
+var scannerActive  = false;
+var html5QrCode    = null;
+var scanTargetId   = "search-bc";
+// Add Drug edit mode
+var isEditMode     = false;
+var pendingEditDrug = null;
+var addHtml5Qr     = null;
+
+// ============================================================
+// TOAST
+// ============================================================
+function showToast(msg, type, duration) {
+  var wrap = document.getElementById('toast-wrap');
+  var el   = document.createElement('div');
+  el.className = 'toast toast-' + (type || 'dark');
+  el.innerHTML = msg;
+  wrap.appendChild(el);
+  var ms = duration || 2500;
+  setTimeout(function() {
+    el.style.animation = 'tOut .22s ease forwards';
+    setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, 230);
+  }, ms);
+}
 
 var appLists = { dosageForms: [], units: [], users: [] };
 
@@ -746,13 +808,88 @@ function startScanner() {
   doStartScanner();
 }
 
-function startScannerTo(fieldId) {
-  scanTargetId = fieldId;
-  document.getElementById('page-scan').classList.add('active');
-  document.querySelectorAll('.page').forEach(function(p) {
-    if (p.id !== 'page-scan') p.classList.remove('active');
+// ============================================================
+// SCANNER สำหรับหน้า เพิ่มยา (overlay แยกต่างหาก)
+// ============================================================
+function startAddScanner() {
+  if (addHtml5Qr) return;
+  document.getElementById('add-scan-overlay').classList.add('show');
+  addHtml5Qr = new Html5Qrcode('add-scan-video');
+  addHtml5Qr.start(
+    { facingMode: 'environment' },
+    { fps: 10, qrbox: { width: 250, height: 120 } },
+    function(decodedText) {
+      stopAddScanner();
+      handleAddScan(decodedText);
+    },
+    function() {}
+  ).catch(function(err) {
+    stopAddScanner();
+    showToast('❌ เปิดกล้องไม่ได้: ' + err, 'danger', 3500);
   });
-  doStartScanner();
+}
+
+function stopAddScanner() {
+  document.getElementById('add-scan-overlay').classList.remove('show');
+  if (addHtml5Qr) {
+    addHtml5Qr.stop()
+      .then(function() { addHtml5Qr.clear(); addHtml5Qr = null; })
+      .catch(function() { addHtml5Qr = null; });
+  }
+}
+
+async function handleAddScan(barcode) {
+  showToast('🔍 กำลังตรวจสอบ...', 'info', 1500);
+  try {
+    var res = await apiGet({ action: 'search', barcode: barcode });
+    if (res.status === 'ok') {
+      // มียาอยู่แล้ว — ถามว่าต้องการแก้ไขมั้ย
+      pendingEditDrug = res.drug;
+      document.getElementById('drug-exists-msg').innerHTML =
+        '<strong>' + res.drug.drug_name + '</strong><br>' +
+        'รหัส: ' + res.drug.drug_code + ' | บาร์โค้ด: ' + barcode + '<br><br>' +
+        'ต้องการแก้ไขข้อมูลยานี้หรือไม่?';
+      document.getElementById('modal-drug-exists').classList.add('show');
+    } else {
+      // ไม่พบ — ใส่บาร์โค้ดในฟอร์มแล้วให้กรอกต่อ
+      document.getElementById('add-bc').value = barcode;
+      isEditMode = false;
+      pendingEditDrug = null;
+      updateAddFormTitle(false);
+      showToast('✅ ไม่พบยานี้ในระบบ — กรอกข้อมูลยาได้เลย', 'success', 2500);
+    }
+  } catch(e) {
+    document.getElementById('add-bc').value = barcode;
+    showToast('⚠️ ตรวจสอบไม่ได้ — กรอกข้อมูลเพิ่มเติมได้เลย', 'warn', 2500);
+  }
+}
+
+function confirmEditDrug() {
+  closeModal('drug-exists');
+  if (!pendingEditDrug) return;
+  fillAddForm(pendingEditDrug);
+  isEditMode = true;
+  updateAddFormTitle(true);
+  showToast('✏️ โหมดแก้ไข — แก้ไขข้อมูลแล้วกดบันทึก', 'info', 3000);
+}
+
+function fillAddForm(drug) {
+  document.getElementById('add-bc').value    = drug.barcode;
+  document.getElementById('add-code').value  = drug.drug_code;
+  document.getElementById('add-name').value  = drug.drug_name;
+  document.getElementById('add-loc').value   = drug.location || '';
+  document.getElementById('add-min').value   = drug.min_stock;
+  document.getElementById('add-max').value   = drug.max_stock;
+  document.getElementById('add-stock').value = drug.current_stock;
+  ssSetValue('ss-add-dosage', drug.dosage_form || '');
+  ssSetValue('ss-add-unit',   drug.unit || '');
+}
+
+function updateAddFormTitle(editMode) {
+  var h2 = document.querySelector('#page-add .card h2');
+  if (h2) h2.textContent = editMode ? '✏️ แก้ไขข้อมูลยา' : '➕ เพิ่มยาใหม่';
+  var btn = document.querySelector('#page-add .card .btn-primary:last-of-type');
+  if (btn) btn.textContent = editMode ? '💾 บันทึกการแก้ไข' : '➕ เพิ่มยาในระบบ';
 }
 
 function doStartScanner() {
@@ -1002,19 +1139,17 @@ function printReport() {
   var no = 1;
 
   Object.keys(groups).sort().forEach(function(gname) {
-    rows += '<tr style="background:#e8f0fe"><td colspan="8" style="padding:8px 10px;font-weight:700;font-size:14px">💊 ' + gname + ' (' + groups[gname].length + ' รายการ)</td></tr>';
+    rows += '<tr style="background:#e8f0fe"><td colspan="7" style="padding:8px 10px;font-weight:700;font-size:14px">💊 ' + gname + ' (' + groups[gname].length + ' รายการ)</td></tr>';
     groups[gname].forEach(function(d) {
-      var need = Math.max(0, d.max_stock - d.current_stock);
       var statusColor = d.current_stock <= 0 ? '#ea4335' : '#fbbc04';
       rows += '<tr>' +
         '<td>' + (no++) + '</td>' +
         '<td>' + d.drug_code + '</td>' +
         '<td style="font-weight:600">' + d.drug_name + '</td>' +
-        '<td>' + d.location + '</td>' +
-        '<td style="color:' + statusColor + ';font-weight:700">' + d.current_stock + '</td>' +
+        '<td>' + (d.location || '-') + '</td>' +
+        '<td style="color:' + statusColor + ';font-weight:700">' + d.current_stock + ' ' + d.unit + '</td>' +
         '<td>' + d.min_stock + '</td>' +
         '<td>' + d.max_stock + '</td>' +
-        '<td style="color:#1a73e8;font-weight:700">' + need + ' ' + d.unit + '</td>' +
         '</tr>';
     });
   });
@@ -1034,9 +1169,9 @@ function printReport() {
     '<button onclick="window.print()" style="background:#1a73e8;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-size:14px;cursor:pointer;margin-bottom:16px">🖨️ พิมพ์รายงาน</button>' +
     '<h2>รายการยาที่ต้องสั่งซื้อ</h2>' +
     '<p class="sub">พิมพ์เมื่อ: ' + now + ' | รวม ' + low.length + ' รายการ</p>' +
-    '<table><thead><tr><th>#</th><th>รหัส</th><th>ชื่อยา</th><th>ตำแหน่ง</th><th>คงเหลือ</th><th>Min</th><th>Max</th><th>ต้องสั่ง</th></tr></thead>' +
+    '<table><thead><tr><th>#</th><th>รหัส</th><th>ชื่อยา</th><th>ตำแหน่ง</th><th>คงเหลือ</th><th>Min</th><th>Max</th></tr></thead>' +
     '<tbody>' + rows + '</tbody></table>' +
-    '<p class="footer">* ต้องสั่ง = Max - คงเหลือปัจจุบัน | รวม ' + low.length + ' รายการ จาก ' + Object.keys(groups).length + ' กลุ่ม</p>' +
+    '<p class="footer">รวม ' + low.length + ' รายการ จาก ' + Object.keys(groups).length + ' กลุ่ม</p>' +
     '</body></html>';
 
   var w = window.open('', '_blank');
@@ -1077,11 +1212,14 @@ async function submitAddDrug() {
     return;
   }
 
-  setAlert('add-alert', '⏳ กำลังบันทึก...', 'info');
+  showToast('⏳ กำลังบันทึก...', 'info', 1500);
+  document.getElementById('add-alert').innerHTML = '';
+
+  var action = isEditMode ? 'updateDrug' : 'addDrug';
 
   try {
     var res = await apiPost({
-      action: 'addDrug',
+      action: action,
       barcode: barcode,
       drug_code: drugCode,
       drug_name: drugName,
@@ -1094,11 +1232,15 @@ async function submitAddDrug() {
     });
 
     if (res.status === 'ok') {
-      setAlert('add-alert', '✅ เพิ่มยาสำเร็จ!', 'success');
+      showToast(isEditMode ? '✅ แก้ไขข้อมูลยาสำเร็จ!' : '✅ เพิ่มยาสำเร็จ!', 'success', 3000);
+      // รีเซ็ตฟอร์ม
       ['add-bc','add-code','add-name','add-loc'].forEach(function(id) { document.getElementById(id).value = ''; });
       ['add-min','add-max','add-stock'].forEach(function(id) { document.getElementById(id).value = '0'; });
       ssReset('ss-add-dosage');
       ssReset('ss-add-unit');
+      isEditMode = false;
+      pendingEditDrug = null;
+      updateAddFormTitle(false);
     } else {
       setAlert('add-alert', '❌ ' + res.message, 'danger');
     }
@@ -1152,10 +1294,10 @@ async function submitReceive() {
     user, note: document.getElementById('mr-note').value
   });
   if (res.status === 'ok') {
-    setAlert('recv-alert', '✅ รับยาเข้าสำเร็จ  คงเหลือ: ' + res.after_stock, 'success');
     currentDrug.current_stock = res.after_stock;
     renderDrugCard(currentDrug);
-    setTimeout(function() { closeModal('receive'); }, 1600);
+    closeModal('receive');
+    showToast('✅ รับยาเข้าสำเร็จ  คงเหลือ: ' + res.after_stock + ' ' + currentDrug.unit, 'success', 3000);
   } else {
     setAlert('recv-alert', '❌ ' + res.message, 'danger');
   }
@@ -1172,10 +1314,10 @@ async function submitTransfer() {
     user, note: document.getElementById('mt-note').value
   });
   if (res.status === 'ok') {
-    setAlert('trsf-alert', '✅ โอนยาออกสำเร็จ  คงเหลือ: ' + res.after_stock, 'success');
     currentDrug.current_stock = res.after_stock;
     renderDrugCard(currentDrug);
-    setTimeout(function() { closeModal('transfer'); }, 1600);
+    closeModal('transfer');
+    showToast('✅ โอนยาออกสำเร็จ  คงเหลือ: ' + res.after_stock + ' ' + currentDrug.unit, 'success', 3000);
   } else {
     setAlert('trsf-alert', '❌ ' + res.message, 'danger');
   }
@@ -1186,10 +1328,10 @@ async function submitLocation() {
   if (!loc) { setAlert('loc-alert', '❗ กรุณากรอกตำแหน่ง', 'danger'); return; }
   var res = await apiPost({ action: 'updateLocation', barcode: currentDrug.barcode, location: loc });
   if (res.status === 'ok') {
-    setAlert('loc-alert', '✅ อัปเดตตำแหน่งสำเร็จ', 'success');
     currentDrug.location = loc;
     renderDrugCard(currentDrug);
-    setTimeout(function() { closeModal('location'); }, 1400);
+    closeModal('location');
+    showToast('✅ อัปเดตตำแหน่งสำเร็จ', 'success', 2500);
   } else {
     setAlert('loc-alert', '❌ ' + res.message, 'danger');
   }
@@ -1202,10 +1344,10 @@ async function submitMinMax() {
   if (min > max) { setAlert('mm-alert', '❗ Min ต้องไม่มากกว่า Max', 'danger'); return; }
   var res = await apiPost({ action: 'updateMinMax', barcode: currentDrug.barcode, min_stock: min, max_stock: max });
   if (res.status === 'ok') {
-    setAlert('mm-alert', '✅ อัปเดต Min-Max สำเร็จ', 'success');
     currentDrug.min_stock = min; currentDrug.max_stock = max;
     renderDrugCard(currentDrug);
-    setTimeout(function() { closeModal('minmax'); }, 1400);
+    closeModal('minmax');
+    showToast('✅ อัปเดต Min-Max สำเร็จ', 'success', 2500);
   } else {
     setAlert('mm-alert', '❌ ' + res.message, 'danger');
   }
