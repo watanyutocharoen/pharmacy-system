@@ -259,9 +259,9 @@ input:focus,textarea:focus{outline:none;border-color:var(--primary)}
   <!-- Input -->
   <div class="card">
     <div class="form-group" style="margin:0">
-      <label>บาร์โค้ดยา</label>
+      <label>ค้นหายา (บาร์โค้ด / รหัสยา / ชื่อยา)</label>
       <div class="input-bar">
-        <input type="text" id="search-bc" placeholder="พิมพ์หรือยิงบาร์โค้ด" inputmode="numeric"
+        <input type="text" id="search-bc" placeholder="บาร์โค้ด, รหัส, หรือชื่อยา"
                onkeypress="if(event.key==='Enter')doSearch()">
         <button class="btn btn-primary btn-sm" onclick="startScanner()" style="width:auto;padding:10px 14px" title="เปิดกล้อง">
           <svg viewBox="0 0 24 24" fill="white" width="20" height="20">
@@ -956,8 +956,8 @@ function resetScan() {
 // SEARCH
 // ============================================================
 async function doSearch() {
-  var bc = document.getElementById('search-bc').value.trim();
-  if (!bc) { setAlert('search-alert', 'กรุณากรอกบาร์โค้ด', 'danger'); return; }
+  var q = document.getElementById('search-bc').value.trim();
+  if (!q) { setAlert('search-alert', 'กรุณากรอกบาร์โค้ด, รหัสยา หรือชื่อยา', 'danger'); return; }
 
   document.getElementById('search-loading').style.display = 'flex';
   document.getElementById('search-result').style.display  = 'none';
@@ -966,19 +966,74 @@ async function doSearch() {
   histVisible = false;
 
   try {
-    var res = await apiGet({ action: 'search', barcode: bc });
+    // ── 1. ลองค้นบาร์โค้ด (exact match) ก่อน ──
+    var res = await apiGet({ action: 'search', barcode: q });
     document.getElementById('search-loading').style.display = 'none';
+
     if (res.status === 'ok') {
       currentDrug = res.drug;
       renderDrugCard(res.drug);
-    } else if (res.status === 'notfound') {
-      setAlert('search-alert', '⚠️ ไม่พบยาในระบบ (barcode: ' + bc + ')', 'danger');
-    } else {
-      setAlert('search-alert', '❌ ' + res.message, 'danger');
+      return;
     }
+
+    // ── 2. ไม่เจอบาร์โค้ด → ค้นชื่อ/รหัสยา (case-insensitive) ──
+    if (allDrugs.length === 0) {
+      document.getElementById('search-loading').style.display = 'flex';
+      var all = await apiGet({ action: 'getAll' });
+      allDrugs = all.drugs || [];
+      document.getElementById('search-loading').style.display = 'none';
+    }
+
+    var ql = q.toLowerCase();
+    var matches = allDrugs.filter(function(d) {
+      return String(d.drug_name).toLowerCase().includes(ql) ||
+             String(d.drug_code).toLowerCase().includes(ql);
+    });
+
+    if (matches.length === 0) {
+      setAlert('search-alert', '⚠️ ไม่พบยาในระบบ (ค้นหา: "' + q + '")', 'danger');
+    } else if (matches.length === 1) {
+      currentDrug = matches[0];
+      renderDrugCard(matches[0]);
+    } else {
+      renderSearchList(matches);
+    }
+
   } catch(e) {
     document.getElementById('search-loading').style.display = 'none';
     setAlert('search-alert', '❌ เชื่อมต่อไม่ได้ โปรดตรวจ API_URL', 'danger');
+  }
+}
+
+function renderSearchList(drugs) {
+  var cmap = { 'ปกติ':'var(--success)', 'ต่ำกว่า Min':'var(--danger)', 'หมด':'#9e9e9e', 'เกิน Max':'var(--warning)' };
+  var html =
+    '<p style="font-size:12px;color:var(--gray);margin-bottom:6px">พบ <strong>' + drugs.length + ' รายการ</strong> — เลือกรายการที่ต้องการ</p>' +
+    '<div class="card" style="padding:0 14px">' +
+    drugs.map(function(d) {
+      var col = cmap[d.stock_status] || 'var(--primary)';
+      return '<div class="inv-item" onclick="selectSearchResult(\'' + String(d.barcode).replace(/'/g,"\\'") + '\')">' +
+        '<div class="inv-loc">' + (d.location || '?') + '</div>' +
+        '<div class="inv-info">' +
+          '<div class="inv-name">' + d.drug_name + '</div>' +
+          '<div class="inv-sub">' + d.drug_code + (d.dosage_form ? ' · ' + d.dosage_form : '') + '</div>' +
+        '</div>' +
+        '<div class="inv-right">' +
+          '<div class="inv-qty" style="color:' + col + '">' + d.current_stock + '</div>' +
+          '<div class="inv-unit">' + d.unit + '</div>' +
+        '</div></div>';
+    }).join('') +
+    '</div>';
+  document.getElementById('search-alert').innerHTML = html;
+}
+
+function selectSearchResult(barcode) {
+  document.getElementById('search-alert').innerHTML = '';
+  var drug = allDrugs.find(function(d) { return String(d.barcode) === String(barcode); });
+  if (drug) {
+    currentDrug = drug;
+    document.getElementById('search-bc').value = barcode;
+    renderDrugCard(drug);
   }
 }
 
