@@ -452,7 +452,9 @@ input:focus,textarea:focus{outline:none;border-color:var(--primary)}
     ค้นหา
   </button>
   <button class="nav-btn" onclick="showPage('inventory',this)">
-    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 3H4v10c0 2.21 1.79 4 4 4h6c2.21 0 4-1.79 4-4v-3h2c1.11 0 2-.89 2-2V5c0-1.11-.89-2-2-2zm0 5h-2V5h2v3zM4 19h16v2H4z"/></svg>
+    <svg viewBox="0 0 24 24" fill="currentColor">
+      <path d="M4.22 11.29l6.36-6.36c1.56-1.56 4.1-1.56 5.66 0s1.56 4.1 0 5.66l-6.36 6.36c-1.56 1.56-4.1 1.56-5.66 0s-1.56-4.1 0-5.66zm4.95 3.54l4.24-4.24-2.83-2.83-4.24 4.24 2.83 2.83z"/>
+    </svg>
     คงคลัง
   </button>
   <button class="nav-btn" onclick="showPage('add',this)">
@@ -1289,12 +1291,14 @@ async function submitReceive() {
   if (!(qty > 0)) { setAlert('recv-alert', '❗ กรุณากรอกจำนวน', 'danger'); return; }
   if (!user)       { setAlert('recv-alert', '❗ กรุณาเลือกผู้ดำเนินการ', 'danger'); return; }
 
+  showToast('⏳ กำลังบันทึก...', 'dark', 8000);
   var res = await apiPost({
     action: 'receive', barcode: currentDrug.barcode, qty,
     user, note: document.getElementById('mr-note').value
   });
   if (res.status === 'ok') {
     currentDrug.current_stock = res.after_stock;
+    currentDrug.stock_status  = calcStockStatus(res.after_stock, currentDrug.min_stock, currentDrug.max_stock);
     renderDrugCard(currentDrug);
     closeModal('receive');
     showToast('✅ รับยาเข้าสำเร็จ  คงเหลือ: ' + res.after_stock + ' ' + currentDrug.unit, 'success', 3000);
@@ -1309,12 +1313,14 @@ async function submitTransfer() {
   if (!(qty > 0)) { setAlert('trsf-alert', '❗ กรุณากรอกจำนวน', 'danger'); return; }
   if (!user)       { setAlert('trsf-alert', '❗ กรุณาเลือกผู้ดำเนินการ', 'danger'); return; }
 
+  showToast('⏳ กำลังบันทึก...', 'dark', 8000);
   var res = await apiPost({
     action: 'transfer', barcode: currentDrug.barcode, qty,
     user, note: document.getElementById('mt-note').value
   });
   if (res.status === 'ok') {
     currentDrug.current_stock = res.after_stock;
+    currentDrug.stock_status  = calcStockStatus(res.after_stock, currentDrug.min_stock, currentDrug.max_stock);
     renderDrugCard(currentDrug);
     closeModal('transfer');
     showToast('✅ โอนยาออกสำเร็จ  คงเหลือ: ' + res.after_stock + ' ' + currentDrug.unit, 'success', 3000);
@@ -1326,6 +1332,7 @@ async function submitTransfer() {
 async function submitLocation() {
   var loc = document.getElementById('ml-val').value.trim();
   if (!loc) { setAlert('loc-alert', '❗ กรุณากรอกตำแหน่ง', 'danger'); return; }
+  showToast('⏳ กำลังบันทึก...', 'dark', 8000);
   var res = await apiPost({ action: 'updateLocation', barcode: currentDrug.barcode, location: loc });
   if (res.status === 'ok') {
     currentDrug.location = loc;
@@ -1342,15 +1349,29 @@ async function submitMinMax() {
   var max = parseInt(document.getElementById('mm-max').value);
   if (isNaN(min) || isNaN(max)) { setAlert('mm-alert', '❗ กรุณากรอก Min และ Max', 'danger'); return; }
   if (min > max) { setAlert('mm-alert', '❗ Min ต้องไม่มากกว่า Max', 'danger'); return; }
+  showToast('⏳ กำลังบันทึก...', 'dark', 8000);
   var res = await apiPost({ action: 'updateMinMax', barcode: currentDrug.barcode, min_stock: min, max_stock: max });
   if (res.status === 'ok') {
-    currentDrug.min_stock = min; currentDrug.max_stock = max;
+    currentDrug.min_stock    = min;
+    currentDrug.max_stock    = max;
+    currentDrug.stock_status = calcStockStatus(currentDrug.current_stock, min, max);
     renderDrugCard(currentDrug);
     closeModal('minmax');
     showToast('✅ อัปเดต Min-Max สำเร็จ', 'success', 2500);
   } else {
     setAlert('mm-alert', '❌ ' + res.message, 'danger');
   }
+}
+
+// ============================================================
+// CALC STOCK STATUS (client-side, ใช้หลัง receive/transfer/minmax)
+// ============================================================
+function calcStockStatus(current, min, max) {
+  current = Number(current); min = Number(min); max = Number(max);
+  if (current <= 0)   return 'หมด';
+  if (current <= min) return 'ต่ำกว่า Min';
+  if (current > max)  return 'เกิน Max';
+  return 'ปกติ';
 }
 
 // ============================================================
