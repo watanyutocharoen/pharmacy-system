@@ -431,7 +431,7 @@ input:focus,textarea:focus{outline:none;border-color:var(--primary)}
     </div>
 
     <div id="add-alert"></div>
-    <button class="btn btn-primary" onclick="submitAddDrug()">➕ เพิ่มยาในระบบ</button>
+    <button class="btn btn-primary" id="add-submit-btn" onclick="submitAddDrug()">➕ เพิ่มยาในระบบ</button>
   </div>
 </div>
 
@@ -890,8 +890,16 @@ function fillAddForm(drug) {
 function updateAddFormTitle(editMode) {
   var h2 = document.querySelector('#page-add .card h2');
   if (h2) h2.textContent = editMode ? '✏️ แก้ไขข้อมูลยา' : '➕ เพิ่มยาใหม่';
-  var btn = document.querySelector('#page-add .card .btn-primary:last-of-type');
-  if (btn) btn.textContent = editMode ? '💾 บันทึกการแก้ไข' : '➕ เพิ่มยาในระบบ';
+
+  var btn = document.getElementById('add-submit-btn');
+  if (!btn) return;
+  if (editMode) {
+    btn.textContent = '💾 บันทึกการแก้ไข';
+    btn.className   = 'btn btn-warning';   // สีเหลือง — แยกชัดว่าโหมดแก้ไข
+  } else {
+    btn.textContent = '➕ เพิ่มยาในระบบ';
+    btn.className   = 'btn btn-primary';
+  }
 }
 
 function doStartScanner() {
